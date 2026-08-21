@@ -1,0 +1,46 @@
+{
+	"name": "vscode-clickable-mixin",
+	"displayName": "Clickable Mixin",
+	"description": "Ctrl+Click Pug and Jade mixin calls to jump to their declarations.",
+	"version": "0.1.0",
+	"publisher": "bridgerosepetal",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/bridgerosepetal/vscode-clickable-mixin.git"
+	},
+	"bugs": {
+		"url": "https://github.com/bridgerosepetal/vscode-clickable-mixin/issues"
+	},
+	"engines": {
+		"vscode": "^1.90.0"
+	},
+	"categories": [
+		"Programming Languages"
+	],
+	"keywords": [
+		"pug",
+		"jade",
+		"mixin",
+		"definition"
+	],
+	"activationEvents": [
+		"onLanguage:pug",
+		"onLanguage:jade"
+	],
+	"main": "./out/extension.js",
+	"scripts": {
+		"compile": "tsc -p ./",
+		"test": "tsc -p ./tsconfig.test.json && node --test out-test/test/*.test.js",
+		"check": "npm run compile && npm test",
+		"watch": "tsc -watch -p ./",
+		"vscode:prepublish": "npm run compile",
+		"package": "vsce package"
+	},
+	"devDependencies": {
+		"@types/node": "^20.14.9",
+		"@types/vscode": "^1.90.0",
+		"typescript": "^5.5.3",
+		"@vscode/vsce": "^3.2.1"
+	}
+}
