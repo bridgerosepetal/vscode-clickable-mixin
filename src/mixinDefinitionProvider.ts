@@ -32,9 +32,30 @@ export function registerMixinDefinitionProvider(): vscode.Disposable {
 						document.getText(),
 					)
 
-					return workspaceIndex
-						.find(call.name, document.uri.toString())
-						.map(definition => toLocationLink(definition, call.range))
+					let definitions = workspaceIndex.find(
+						call.name,
+						document.uri.toString(),
+					)
+
+					if (definitions.length === 0) {
+						workspaceIndex.updateFromOpenDocuments()
+						definitions = workspaceIndex.find(
+							call.name,
+							document.uri.toString(),
+						)
+					}
+
+					if (definitions.length === 0) {
+						await workspaceIndex.forceRebuild()
+						definitions = workspaceIndex.find(
+							call.name,
+							document.uri.toString(),
+						)
+					}
+
+					return definitions.map(definition =>
+						toLocationLink(definition, call.range),
+					)
 				} catch {
 					return undefined
 				}
@@ -42,26 +63,67 @@ export function registerMixinDefinitionProvider(): vscode.Disposable {
 		},
 	)
 
-	const watcher = vscode.workspace.createFileSystemWatcher(
-		'**/*.{pug,jade}',
-	)
-	const invalidate = () => workspaceIndex.invalidate()
-	const documentChange = vscode.workspace.onDidChangeTextDocument(event => {
-		if (isPugDocument(event.document)) {
-			invalidate()
+	const pugWatcher = vscode.workspace.createFileSystemWatcher('**/*.pug')
+	const jadeWatcher = vscode.workspace.createFileSystemWatcher('**/*.jade')
+
+	const onFileChangedOrCreated = async (uri: vscode.Uri) => {
+		try {
+			const bytes = await vscode.workspace.fs.readFile(uri)
+			workspaceIndex.updateFile(
+				uri.toString(),
+				Buffer.from(bytes).toString('utf8'),
+			)
+		} catch {
+			workspaceIndex.invalidate()
 		}
-	})
+	}
+
+	const onFileDeleted = (uri: vscode.Uri) => {
+		workspaceIndex.removeFile(uri.toString())
+	}
+
 	const watcherChanges = [
-		watcher.onDidChange(invalidate),
-		watcher.onDidCreate(invalidate),
-		watcher.onDidDelete(invalidate),
+		pugWatcher.onDidChange(onFileChangedOrCreated),
+		pugWatcher.onDidCreate(onFileChangedOrCreated),
+		pugWatcher.onDidDelete(onFileDeleted),
+		jadeWatcher.onDidChange(onFileChangedOrCreated),
+		jadeWatcher.onDidCreate(onFileChangedOrCreated),
+		jadeWatcher.onDidDelete(onFileDeleted),
+	]
+
+	const documentChanges = [
+		vscode.workspace.onDidChangeTextDocument(event => {
+			if (isPugDocument(event.document)) {
+				workspaceIndex.updateFile(
+					event.document.uri.toString(),
+					event.document.getText(),
+				)
+			}
+		}),
+		vscode.workspace.onDidOpenTextDocument(document => {
+			if (isPugDocument(document)) {
+				workspaceIndex.updateFile(
+					document.uri.toString(),
+					document.getText(),
+				)
+			}
+		}),
+		vscode.workspace.onDidSaveTextDocument(document => {
+			if (isPugDocument(document)) {
+				workspaceIndex.updateFile(
+					document.uri.toString(),
+					document.getText(),
+				)
+			}
+		}),
 	]
 
 	return vscode.Disposable.from(
 		definitionProvider,
-		watcher,
-		documentChange,
+		pugWatcher,
+		jadeWatcher,
 		...watcherChanges,
+		...documentChanges,
 	)
 }
 
@@ -88,8 +150,26 @@ class WorkspaceMixinIndex {
 		this.indexed = false
 	}
 
+	async forceRebuild(): Promise<void> {
+		this.indexing = undefined
+		this.indexed = false
+		return this.ensureIndexed()
+	}
+
 	updateFile(uri: string, text: string): void {
 		this.index.updateFile(uri, text)
+	}
+
+	removeFile(uri: string): void {
+		this.index.removeFile(uri)
+	}
+
+	updateFromOpenDocuments(): void {
+		for (const doc of vscode.workspace.textDocuments) {
+			if (isPugDocument(doc)) {
+				this.updateFile(doc.uri.toString(), doc.getText())
+			}
+		}
 	}
 
 	find(name: string, preferredUri?: string) {
@@ -121,6 +201,7 @@ class WorkspaceMixinIndex {
 			}),
 		)
 
+		this.updateFromOpenDocuments()
 		this.indexed = true
 	}
 }
