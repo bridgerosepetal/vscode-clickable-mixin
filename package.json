@@ -2,7 +2,7 @@
 	"name": "vscode-clickable-mixin",
 	"displayName": "Clickable Mixin",
 	"description": "Ctrl+Click Pug and Jade mixin calls to jump to their declarations.",
-	"version": "0.1.0",
+	"version": "1.0.1",
 	"publisher": "bridgerosepetal",
 	"license": "MIT",
 	"repository": {
