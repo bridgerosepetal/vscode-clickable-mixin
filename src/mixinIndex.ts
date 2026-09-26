@@ -52,9 +52,9 @@ export class MixinIndex {
 			}
 
 			return (
-			left.uri.localeCompare(right.uri) ||
-			left.range.start.line - right.range.start.line ||
-			left.range.start.character - right.range.start.character
+				left.uri.localeCompare(right.uri) ||
+				left.range.start.line - right.range.start.line ||
+				left.range.start.character - right.range.start.character
 			)
 		})
 	}
