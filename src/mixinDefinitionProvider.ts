@@ -6,6 +6,11 @@ import {
 	type TextRange,
 } from './pugMixins'
 
+// A miss triggers a full workspace rescan in case a watcher event was lost.
+// Cap how often that happens so repeated clicks on an unknown or dynamic
+// mixin name don't rescan every Pug file each time.
+const MIN_FORCED_REBUILD_INTERVAL_MS = 10_000
+
 const PUG_LANGUAGE_SELECTOR: vscode.DocumentSelector = [
 	{ language: 'pug' },
 	{ language: 'jade' },
@@ -67,14 +72,28 @@ export function registerMixinDefinitionProvider(): vscode.Disposable {
 	const jadeWatcher = vscode.workspace.createFileSystemWatcher('**/*.jade')
 
 	const onFileChangedOrCreated = async (uri: vscode.Uri) => {
+		// Open documents are tracked through document events; reading from
+		// disk here would replace unsaved edits with stale content.
+		if (isOpenDocument(uri)) {
+			return
+		}
+
+		let text: string | undefined
 		try {
 			const bytes = await vscode.workspace.fs.readFile(uri)
-			workspaceIndex.updateFile(
-				uri.toString(),
-				Buffer.from(bytes).toString('utf8'),
-			)
+			text = Buffer.from(bytes).toString('utf8')
 		} catch {
-			workspaceIndex.invalidate()
+			text = undefined
+		}
+
+		// The document may have been (re)opened while the read was pending.
+		if (isOpenDocument(uri)) {
+			return
+		}
+		if (text === undefined) {
+			workspaceIndex.removeFile(uri.toString())
+		} else {
+			workspaceIndex.updateFile(uri.toString(), text)
 		}
 	}
 
@@ -116,6 +135,13 @@ export function registerMixinDefinitionProvider(): vscode.Disposable {
 				)
 			}
 		}),
+		vscode.workspace.onDidCloseTextDocument(document => {
+			// A document closed without saving leaves unsaved declarations in
+			// the index; fall back to what is on disk.
+			if (isPugDocument(document)) {
+				void onFileChangedOrCreated(document.uri)
+			}
+		}),
 	]
 
 	return vscode.Disposable.from(
@@ -131,6 +157,7 @@ class WorkspaceMixinIndex {
 	private readonly index = new MixinIndex()
 	private indexed = false
 	private indexing: Promise<void> | undefined
+	private lastRebuildAt = 0
 
 	async ensureIndexed(): Promise<void> {
 		if (this.indexed) {
@@ -146,12 +173,16 @@ class WorkspaceMixinIndex {
 		return this.indexing
 	}
 
-	invalidate(): void {
-		this.indexed = false
-	}
-
 	async forceRebuild(): Promise<void> {
-		this.indexing = undefined
+		// A rebuild already in flight is as fresh as a new one would be, and
+		// starting a second one would let two rebuilds clear each other.
+		if (this.indexing) {
+			return this.indexing
+		}
+		if (Date.now() - this.lastRebuildAt < MIN_FORCED_REBUILD_INTERVAL_MS) {
+			return
+		}
+
 		this.indexed = false
 		return this.ensureIndexed()
 	}
@@ -203,6 +234,7 @@ class WorkspaceMixinIndex {
 
 		this.updateFromOpenDocuments()
 		this.indexed = true
+		this.lastRebuildAt = Date.now()
 	}
 }
 
@@ -236,6 +268,13 @@ function toTextPosition(position: vscode.Position): TextPosition {
 		line: position.line,
 		character: position.character,
 	}
+}
+
+function isOpenDocument(uri: vscode.Uri): boolean {
+	const key = uri.toString()
+	return vscode.workspace.textDocuments.some(
+		document => !document.isClosed && document.uri.toString() === key,
+	)
 }
 
 function isPugDocument(document: vscode.TextDocument): boolean {

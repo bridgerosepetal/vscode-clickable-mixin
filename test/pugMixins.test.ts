@@ -63,6 +63,50 @@ describe('Pug mixin parsing', () => {
 			undefined,
 		)
 	})
+
+	it('ignores declarations inside comment and text blocks', () => {
+		const uri = 'file:///workspace/mixins.pug'
+		const text = [
+			'//-',
+			'  mixin commented()',
+			'',
+			'    mixin nested-commented()',
+			'script.',
+			'  mixin in-script()',
+			'div(class=\'x\').',
+			'  mixin in-text()',
+			'p Ends with a dot.',
+			'mixin visible()',
+		].join('\n')
+
+		assert.deepEqual(
+			parsePugMixinDefinitions(text, uri).map(definition => definition.name),
+			['visible'],
+		)
+	})
+
+	it('ignores calls inside comment and text blocks', () => {
+		const text = [
+			'// +commented()',
+			'  +in-comment()',
+			'p.',
+			'  +in-text()',
+			'div',
+			'  +real()',
+		].join('\n')
+
+		for (const line of [0, 1, 3]) {
+			const character = text.split('\n')[line].indexOf('+') + 1
+			assert.equal(
+				findPugMixinCallAtPosition(text, { line, character }),
+				undefined,
+			)
+		}
+		assert.equal(
+			findPugMixinCallAtPosition(text, { line: 5, character: 3 })?.name,
+			'real',
+		)
+	})
 })
 
 describe('MixinIndex', () => {

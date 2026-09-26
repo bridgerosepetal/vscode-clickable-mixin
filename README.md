@@ -25,6 +25,10 @@ The extension supports both `pug` and `jade` language IDs, scans Pug/Jade files
 in the current workspace, and returns every matching declaration when a name is
 defined more than once so VS Code can show a definition picker.
 
+Declarations and calls inside `//` or `//-` comment blocks and `.` text blocks
+(such as `script.` or `p.`) are ignored. Unsaved edits in open editors take
+precedence over the file on disk.
+
 ## Development
 
 ```sh
